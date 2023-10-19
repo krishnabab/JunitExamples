@@ -1,0 +1,66 @@
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.common.record.TimestampType;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
+
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+@ExtendWith(MockitoExtension.class)
+public class MessageProcessorTest {
+    @InjectMocks
+    MessageProcessor messageProcessor;
+
+    @Mock
+    DocumentTasklet documentTasklet;
+
+    @Test
+    public void test_NPE_processMessage() {
+        assertThrows(Exception.class,() -> {
+            messageProcessor.processMessage(null);
+        });
+    }
+
+    @Test
+    public void test_ProcessingValidAttachmentMessage() throws Exception {
+        List<ILoggingEvent> logsList = setListAppender().list;
+        Schema schema = new Schema.Parser().parse(
+                "{\"namespace\":\"com.avro\",\"type\":\"record\",\"name\":\""
+                        + "AttachmentArchive\",\"fields\":[{\"name\":\"rid\",\"type\":\"string\",\"doc\":\"The record ID"
+                        + " of the database entry in Aurora\",\"value\":\"1\"},{\"name\":\"attachmentId\",\"type\":\""
+                        + "string\",\"doc\":\"The document attachment ID for the specified rid\",\"value\":\"1\"},{\""
+                        + "name\":\"formKey\",\"type\":\"string\",\"doc\":\"The formKey of a processing workflow in "
+                        + "Aurora\",\"value\":\"sbaround2\"}]}");
+        GenericRecord genericRecord = new GenericData.Record(schema);
+        genericRecord.put("attachmentId", 1);
+        genericRecord.put("rid", 1);
+        genericRecord.put("formKey", "sbaround2");
+        ConsumerRecord<String, Object> message = new ConsumerRecord<>("topic", 1, 0, 0L,
+                TimestampType.CREATE_TIME, 0L,
+                0, 0, "messageKey", genericRecord);
+        messageProcessor.processMessage(message);
+        assertEquals(" attachment upload message : {formKey=sbaround2, attachmentId=1, rid=1}",
+                logsList.get(4).getFormattedMessage());
+    }
+
+    private ListAppender<ILoggingEvent> setListAppender() {
+        Logger testLogger = (Logger) LoggerFactory.getLogger(MessageProcessor.class);
+        ListAppender<ILoggingEvent> listAppender = new ListAppender<>();
+        listAppender.start();
+        testLogger.addAppender(listAppender);
+        return listAppender;
+    }
+}
